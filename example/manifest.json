@@ -1,0 +1,12 @@
+{
+  "version": "0.1.0",
+  "name": "Test",
+  "description": "Test",
+  "author": "Test",
+  "manifest_version": 3,
+  "permissions": [],
+  "incognito": "spanning",
+  "browser_action": {
+    "default_popup": "popup.html"
+  }
+}
