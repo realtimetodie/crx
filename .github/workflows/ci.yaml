@@ -1,0 +1,31 @@
+name: ci
+on:
+  push:
+    branches: ["main"]
+  pull_request: {}
+jobs:
+  cargo:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        rust: [stable, beta]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies (linux)
+        run: |
+          sudo apt install -y protobuf-compiler
+          echo "PROTOC=$(which protoc)" >> $GITHUB_ENV
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ matrix.rust }}
+          components: clippy, rustfmt
+      - name: Run cargo clippy
+        run: cargo clippy --all-targets --all-features -- -D warnings
+      - name: Run cargo fmt
+        run: cargo fmt --all --check
+      - name: Run cargo sort
+        run: |
+          cargo install cargo-sort
+          cargo sort --grouped --check
+      - name: Run cargo test
+        run: cargo test --all-features --all-targets

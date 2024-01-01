@@ -1,0 +1,89 @@
+name: release-next
+on: workflow_dispatch
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            alias: unknown-linux-gnu
+          - os: macos-12
+            alias: x86_64-apple-darwin
+          - os: macos-13-xlarge
+            alias: aarch64-apple-darwin
+          - os: windows-latest
+            alias: pc-windows-msvc
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - if: matrix.os == 'ubuntu-latest'
+        name: Install dependencies (linux)
+        run: |
+          sudo apt install -y protobuf-compiler
+          echo "PROTOC=$(which protoc)" >> $GITHUB_ENV
+      - if: matrix.os == 'macos-12' || matrix.os == 'macos-13-xlarge'
+        name: Install dependencies (macos)
+        run: |
+          brew install protobuf
+          brew install tree
+          echo "PROTOC=$(which protoc)" >> $GITHUB_ENV
+      - if: matrix.sys.os == 'windows-latest'
+        name: Install MSYS2 (windows)
+        uses: msys2/setup-msys2@v2
+      - if: matrix.os == 'windows-latest'
+        name: Install dependencies (windows)
+        run: choco install protoc
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+      - name: Run cargo build
+        run: cargo build --bin=crx --profile=release-bin
+      - if: ${{ !cancelled() && matrix.sys.os != 'windows-latest' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: crx-${{ matrix.alias }}
+          path: target/release-bin/crx
+          if-no-files-found: error
+      - if: ${{ !cancelled() && matrix.sys.os == 'windows-latest' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: crx-${{ matrix.alias }}
+          path: target/release-bin/crx.exe
+          if-no-files-found: error
+  publish:
+    runs-on: ubuntu-latest
+    needs: [build]
+    if: ${{ !cancelled() && needs.build.result == 'success2' }}
+    env:
+      RUST_BACKTRACE: 1
+    steps:
+      - uses: actions/checkout@v4
+      #   with:
+      #     token: ${{ secrets.GITHUB_TOKEN }}
+      # - name: Login to crates.io
+      #   run: cargo login $CRATES_IO_TOKEN
+      #   env:
+      #     CRATES_IO_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
+      # - name: Publish
+      #   run: cargo publish
+      #   env:
+      #     CRATES_IO_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
+  release:
+    runs-on: ubuntu-latest
+    needs: [build, publish]
+    if: ${{ !cancelled() && needs.publish.result == 'success' && needs.build.result == 'success' }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: /artifacts
+      - name: Create release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          tag: ${{ github.ref_name }}
+        run: |
+          gh release create "$tag" \
+              --repo="$GITHUB_REPOSITORY" \
+              --title="${GITHUB_REPOSITORY#*/} ${tag#v}" \
+              --generate-notes
+          gh release upload "$tag" /artifacts/*
